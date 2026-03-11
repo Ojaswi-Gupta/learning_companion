@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environment
+venv/
+env/
+
+# Environment variables
+.env
+backend/data/index/
+backend/data/uploads/
+backend/data/document_store.json
+# Data folders
+data/index/
+data/uploads/
+data/document_store.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

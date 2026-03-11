@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<meta charset="UTF-8">
+<title>AI Learning Companion</title>
+<link rel="stylesheet" href="style.css">
+
+
+<body>
+
+<div class="app">
+
+<div class="sidebar">
+
+<h2>Documents</h2>
+
+<input type="file" id="fileUpload">
+
+<button onclick="upload()">Upload</button>
+
+<div id="docs"></div>
+
+</div>
+
+
+<div class="chat">
+
+<div class="header">
+AI Learning Companion
+</div>
+
+<div id="chatbox"></div>
+
+<div class="inputArea">
+
+<input
+id="msg"
+placeholder="Ask something..."
+onkeydown="if(event.key==='Enter'){send()}"
+>
+
+<button onclick="send()">Send</button>
+
+</div>
+
+</div>
+
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
