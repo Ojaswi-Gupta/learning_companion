@@ -1,107 +1,115 @@
-import faiss
-import pickle
-import os
-import numpy as np
-from config import INDEX_PATH, META_PATH
+"""Vector store backed by Supabase pgvector via the `vecs` library.
 
-index = None
-metadata = []
+The vecs library automatically manages a pgvector collection (table)
+in your Supabase Postgres database.
+"""
+
+import logging
+from supabase_client import vecs_client
+from config import EMBED_DIM, SCORE_THRESHOLD
+
+logger = logging.getLogger(__name__)
+
+COLLECTION_NAME = "document_chunks"
+
+
+class VectorStore:
+    """Manages a pgvector collection for document chunk embeddings."""
+
+    def __init__(self):
+        self.collection = None
+
+    def init(self):
+        """Get or create the pgvector collection."""
+        self.collection = vecs_client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            dimension=EMBED_DIM
+        )
+
+    def add_documents(self, texts, vectors):
+        """Add document chunks and their vectors to the collection.
+
+        Args:
+            texts: list of dicts with keys: text, doc_id, file_name, page, etc.
+            vectors: list of embedding vectors (lists of floats)
+        """
+
+        records = []
+        for i, (meta, vec) in enumerate(zip(texts, vectors)):
+            # vecs expects (id, vector, metadata)
+            record_id = f"{meta['doc_id']}_{i}_{meta.get('page', 0)}"
+            records.append((
+                record_id,
+                vec,
+                {
+                    "text": meta["text"],
+                    "doc_id": meta["doc_id"],
+                    "file_name": meta.get("file_name", ""),
+                    "page": meta.get("page", 0)
+                }
+            ))
+
+        self.collection.upsert(records=records)
+
+        # Create or refresh the index for fast search
+        try:
+            self.collection.create_index(replace=True)
+        except Exception as e:
+            logger.warning(f"Index creation note: {e}")
+
+    def search(self, vec, top_k=10):
+        """Search the collection for the top-k most similar vectors.
+
+        Returns a list of dicts with keys: text, doc_id, file_name, page, score
+        """
+
+        results = self.collection.query(
+            data=vec,
+            limit=top_k,
+            include_metadata=True,
+            include_value=True
+        )
+
+        # vecs returns list of (id, distance, metadata) tuples
+        docs = []
+        for record_id, distance, metadata in results:
+            if metadata:
+                item = metadata.copy()
+                item["score"] = float(distance)
+                docs.append(item)
+
+        return docs
+
+    def delete_doc(self, doc_id):
+        """Remove all chunks for a given doc_id using direct SQL."""
+
+        try:
+            from sqlalchemy import text
+            with vecs_client.Session() as sess:
+                result = sess.execute(
+                    text(f"DELETE FROM vecs.\"{COLLECTION_NAME}\" WHERE metadata->>'doc_id' = :doc_id"),
+                    {"doc_id": doc_id}
+                )
+                sess.commit()
+                logger.info(f"Deleted {result.rowcount} chunks for doc_id={doc_id}")
+
+        except Exception as e:
+            logger.error(f"Error deleting doc {doc_id}: {e}", exc_info=True)
+            raise
+
+
+# Module-level singleton so existing imports continue to work
+store = VectorStore()
 
 
 def load_index():
-
-    global index, metadata
-
-    if os.path.exists(INDEX_PATH):
-
-        index = faiss.read_index(INDEX_PATH)
-
-        with open(META_PATH, "rb") as f:
-            metadata = pickle.load(f)
-
-    else:
-
-        index = faiss.IndexFlatL2(384)
-        metadata = []
-
-
-def save():
-
-    faiss.write_index(index, INDEX_PATH)
-
-    with open(META_PATH, "wb") as f:
-        pickle.dump(metadata, f)
-
-
-def rebuild_index(vectors):
-
-    global index
-
-    dim = len(vectors[0])
-
-    index = faiss.IndexFlatL2(dim)
-
-    index.add(np.array(vectors).astype("float32"))
-
+    store.init()
 
 def add_documents(texts, vectors):
-
-    global metadata
-
-    if index.ntotal == 0:
-        index.add(np.array(vectors).astype("float32"))
-    else:
-        index.add(np.array(vectors).astype("float32"))
-
-    metadata.extend(texts)
-
-    save()
+    store.add_documents(texts, vectors)
 
 def search(vec, top_k=10):
-
-    if index.ntotal == 0:
-        return []
-
-    D, I = index.search(np.array([vec]).astype("float32"), top_k)
-
-    results = []
-
-    for dist, idx in zip(D[0], I[0]):
-
-        if idx < len(metadata):
-
-            item = metadata[idx].copy()
-            item["score"] = float(dist)
-
-            results.append(item)
-
-    return results
-
+    return store.search(vec, top_k)
 
 def delete_doc(doc_id):
-
-    global metadata
-
-    keep = []
-    vectors = []
-
-    for i, m in enumerate(metadata):
-
-        if m["doc_id"] != doc_id:
-            keep.append(m)
-
-    metadata = keep
-
-    if len(metadata) == 0:
-        load_index()
-        save()
-        return
-
-    texts = [m["text"] for m in metadata]
-
-    from embeddings import embed_texts
-    vectors = embed_texts(texts)
-
-    rebuild_index(vectors)
-
-    save()
+    store.delete_doc(doc_id)

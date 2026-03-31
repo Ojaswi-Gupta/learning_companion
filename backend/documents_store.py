@@ -1,44 +1,43 @@
-import json
-import os
-from config import DOC_STORE
+"""Document metadata store backed by Supabase Postgres.
 
+Requires a 'documents' table in Supabase:
 
-def load_store():
+    CREATE TABLE IF NOT EXISTS documents (
+        doc_id   TEXT PRIMARY KEY,
+        name     TEXT NOT NULL,
+        topics   TEXT
+    );
+"""
 
-    if not os.path.exists(DOC_STORE):
-        return {}
-
-    with open(DOC_STORE, "r") as f:
-        return json.load(f)
-
-
-def save_store(data):
-
-    with open(DOC_STORE, "w") as f:
-        json.dump(data, f, indent=2)
+from supabase_client import supabase
 
 
 def save_document(doc_id, name, topics):
+    """Insert or update a document record."""
 
-    data = load_store()
-
-    data[doc_id] = {
+    supabase.table("documents").upsert({
+        "doc_id": doc_id,
         "name": name,
         "topics": topics
-    }
-
-    save_store(data)
+    }).execute()
 
 
 def get_documents():
-    return load_store()
+    """Return all documents as a dict keyed by doc_id."""
+
+    result = supabase.table("documents").select("*").execute()
+
+    docs = {}
+    for row in result.data:
+        docs[row["doc_id"]] = {
+            "name": row["name"],
+            "topics": row["topics"]
+        }
+
+    return docs
 
 
 def delete_document(doc_id):
+    """Delete a document record by doc_id."""
 
-    data = load_store()
-
-    if doc_id in data:
-        del data[doc_id]
-
-    save_store(data)
+    supabase.table("documents").delete().eq("doc_id", doc_id).execute()

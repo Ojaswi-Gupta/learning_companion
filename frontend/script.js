@@ -1,145 +1,223 @@
 
 const API = "http://localhost:8000"
+
+let sessionId = localStorage.getItem("sessionId") || ""
+
 console.log("SCRIPT LOADED")
+
+
 async function upload(){
 
-let file = document.getElementById("fileUpload").files[0]
+    let file = document.getElementById("fileUpload").files[0]
 
-if(!file){
-alert("Choose a file")
-return
-}
+    if(!file){
+        alert("Choose a file")
+        return
+    }
 
-let form = new FormData()
+    let form = new FormData()
 
-form.append("file", file)
+    form.append("file", file)
 
-await fetch(API + "/upload",{
-method:"POST",
-body:form
-})
+    let uploadBtn = document.querySelector(".sidebar button")
+    uploadBtn.disabled = true
+    uploadBtn.innerText = "Uploading..."
 
-loadDocs()
+    try {
+        let res = await fetch(API + "/upload", {
+            method: "POST",
+            body: form
+        })
+
+        if (!res.ok) {
+            let err = await res.json()
+            alert(err.detail || "Upload failed")
+            return
+        }
+
+        loadDocs()
+    } catch (e) {
+        alert("Could not connect to server")
+        console.error("Upload error:", e)
+    } finally {
+        uploadBtn.disabled = false
+        uploadBtn.innerText = "Upload"
+    }
 }
 
 
 
 async function send(){
 
-let input=document.getElementById("msg")
-let msg=input.value.trim()
+    let input = document.getElementById("msg")
+    let msg = input.value.trim()
 
-if(!msg) return
+    if(!msg) return
 
-addMessage(msg,"user")
+    addMessage(msg, "user")
 
-input.value=""
+    input.value = ""
 
-let thinking=addMessage("Thinking...","ai")
+    let thinking = addMessage("Thinking...", "ai")
 
-let res=await fetch(API+"/chat?query="+encodeURIComponent(msg),{
-method:"POST"
-})
+    try {
+        let res = await fetch(API + "/chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Session-ID": sessionId
+            },
+            body: JSON.stringify({ query: msg })
+        })
 
-let data=await res.json()
+        // Store session ID from response
+        let sid = res.headers.get("X-Session-ID")
+        if (sid) {
+            sessionId = sid
+            localStorage.setItem("sessionId", sid)
+        }
 
-console.log("API RESPONSE:",data)
+        if (!res.ok) {
+            thinking.remove()
+            let err = await res.json()
+            addMessage("Error: " + (err.detail || "Something went wrong"), "ai")
+            return
+        }
 
-thinking.remove()
+        let data = await res.json()
 
-let aiDiv=addMessage(data.response,"ai")
+        console.log("API RESPONSE:", data)
 
-if(data.fallback){
+        thinking.remove()
 
-let btn=document.createElement("button")
+        let aiDiv = addMessage(data.response, "ai")
 
-btn.innerText="Ask General AI"
+        if(data.fallback){
 
-btn.style.marginTop="10px"
+            let btn = document.createElement("button")
 
-btn.onclick=async()=>{
+            btn.innerText = "Ask General AI"
 
-btn.innerText="Thinking..."
+            btn.style.marginTop = "10px"
 
-let r=await fetch(API+"/general?query="+encodeURIComponent(msg),{
-method:"POST"
-})
+            btn.onclick = async () => {
 
-let d=await r.json()
+                btn.innerText = "Thinking..."
+                btn.disabled = true
 
-addMessage(d.response,"ai")
+                try {
+                    let r = await fetch(API + "/general", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ query: msg })
+                    })
 
-btn.remove()
+                    if (!r.ok) {
+                        let err = await r.json()
+                        addMessage("Error: " + (err.detail || "General AI failed"), "ai")
+                        btn.remove()
+                        return
+                    }
 
+                    let d = await r.json()
+
+                    addMessage(d.response, "ai")
+
+                    btn.remove()
+                } catch (e) {
+                    addMessage("Could not connect to server", "ai")
+                    btn.innerText = "Ask General AI"
+                    btn.disabled = false
+                    console.error("General AI error:", e)
+                }
+            }
+
+            document.getElementById("chatbox").appendChild(btn)
+        }
+
+    } catch (e) {
+        thinking.remove()
+        addMessage("Could not connect to server", "ai")
+        console.error("Chat error:", e)
+    }
 }
 
-document.getElementById("chatbox").appendChild(btn)
-
-}
-
-}
 
 
+function addMessage(text, type){
 
-function addMessage(text,type){
+    let box = document.getElementById("chatbox")
 
-let box=document.getElementById("chatbox")
+    let div = document.createElement("div")
 
-let div=document.createElement("div")
+    div.className = "message " + type
 
-div.className="message "+type
+    div.innerHTML = marked.parse(text)
 
-div.innerHTML=marked.parse(text)
+    box.appendChild(div)
 
-box.appendChild(div)
+    box.scrollTop = box.scrollHeight
 
-box.scrollTop=box.scrollHeight
-
-return div
-
+    return div
 }
 
 
 
 async function loadDocs(){
 
-let res=await fetch(API+"/documents")
+    try {
+        let res = await fetch(API + "/documents")
 
-let docs=await res.json()
+        if (!res.ok) {
+            console.error("Failed to load documents")
+            return
+        }
 
-let div=document.getElementById("docs")
+        let docs = await res.json()
 
-div.innerHTML=""
+        let div = document.getElementById("docs")
 
-for(let id in docs){
+        div.innerHTML = ""
 
-let d=docs[id]
+        for(let id in docs){
 
-let el=document.createElement("div")
+            let d = docs[id]
 
-el.className="docItem"
+            let el = document.createElement("div")
 
-el.innerHTML=`
+            el.className = "docItem"
+
+            el.innerHTML = `
 <span>${d.name}</span>
 <button onclick="delDoc('${id}')">Delete</button>
 `
 
-div.appendChild(el)
-
-}
-
+            div.appendChild(el)
+        }
+    } catch (e) {
+        console.error("loadDocs error:", e)
+    }
 }
 
 
 
 async function delDoc(id){
 
-await fetch(API+"/documents/"+id,{
-method:"DELETE"
-})
+    try {
+        let res = await fetch(API + "/documents/" + id, {
+            method: "DELETE"
+        })
 
-loadDocs()
+        if (!res.ok) {
+            alert("Failed to delete document")
+            return
+        }
 
+        loadDocs()
+    } catch (e) {
+        alert("Could not connect to server")
+        console.error("Delete error:", e)
+    }
 }
 
 
