@@ -1,5 +1,6 @@
 
-const API = "http://localhost:8000"
+// Set API URL: override via window.API_URL or default to localhost for dev
+const API = window.API_URL || "http://localhost:8000"
 
 let sessionId = localStorage.getItem("sessionId") || ""
 
