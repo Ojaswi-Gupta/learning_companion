@@ -2,11 +2,12 @@ import os
 from huggingface_hub import InferenceClient
 from config import EMBED_MODEL
 
-HF_TOKEN = os.getenv("HF_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 if not HF_TOKEN:
     print("Warning: HF_TOKEN is not set. Inference might fail.")
 
-client = InferenceClient(token=HF_TOKEN)
+# By passing an empty string instead of None, we prevent it from searching the local ~ disk cache, preventing stale lockfile deadlocks.
+client = InferenceClient(token=HF_TOKEN if HF_TOKEN else False)
 
 model_name = "sentence-transformers/" + EMBED_MODEL if "sentence-transformers/" not in EMBED_MODEL else EMBED_MODEL
 
