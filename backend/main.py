@@ -88,7 +88,7 @@ def upload(file: UploadFile):
 
 
 @app.post("/chat")
-async def chat(body: ChatRequest, request: Request, response: Response):
+def chat(body: ChatRequest, request: Request, response: Response):
     try:
         session_id = get_session_id(request, response)
         return ask_question(body.query, session_id=session_id)
@@ -119,7 +119,7 @@ def delete(doc_id: str):
 
 
 @app.post("/general")
-async def general(body: GeneralRequest):
+def general(body: GeneralRequest):
     try:
         ans = general_llm_answer(body.query)
         return {"response": ans}
