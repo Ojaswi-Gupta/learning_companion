@@ -1,4 +1,3 @@
-
 // Set API URL: override via window.API_URL or default to localhost for dev
 const API = window.API_URL || "http://127.0.0.1:8000"
 
@@ -6,19 +5,53 @@ let sessionId = localStorage.getItem("sessionId") || ""
 
 console.log("SCRIPT LOADED")
 
-async function upload(){
+// ===== Upload =====
+
+function setupDropzone() {
+    const dropzone = document.getElementById("dropzone")
+    const fileInput = document.getElementById("fileUpload")
+    if (!dropzone || !fileInput) return
+
+    // Show file name when selected
+    fileInput.addEventListener("change", () => {
+        if (fileInput.files[0]) {
+            const name = fileInput.files[0].name
+            dropzone.querySelector(".upload-text").textContent = name
+            dropzone.querySelector(".upload-hint").textContent = "Click Upload to proceed"
+        }
+    })
+
+    // Drag & drop visuals
+    dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault()
+        dropzone.classList.add("dragover")
+    })
+    dropzone.addEventListener("dragleave", () => {
+        dropzone.classList.remove("dragover")
+    })
+    dropzone.addEventListener("drop", (e) => {
+        e.preventDefault()
+        dropzone.classList.remove("dragover")
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files
+            fileInput.dispatchEvent(new Event("change"))
+        }
+    })
+}
+
+async function upload() {
     let file = document.getElementById("fileUpload").files[0]
-    if(!file){
-        alert("Choose a file")
+    if (!file) {
+        alert("Choose a file first")
         return
     }
 
     let form = new FormData()
     form.append("file", file)
 
-    let uploadBtn = document.querySelector(".upload-group button") || document.querySelector(".sidebar button")
+    let uploadBtn = document.getElementById("uploadBtn")
     uploadBtn.disabled = true
-    uploadBtn.innerText = "Uploading..."
+    uploadBtn.querySelector("span").textContent = "Uploading..."
 
     try {
         let res = await fetch(API + "/upload", {
@@ -31,19 +64,28 @@ async function upload(){
             alert(err.detail || "Upload failed")
             return
         }
+
+        // Clear welcome message on first upload
+        clearWelcome()
         loadDocs()
     } catch (e) {
         alert("Could not connect to server")
         console.error("Upload error:", e)
     } finally {
         uploadBtn.disabled = false
-        uploadBtn.innerText = "Upload"
-        // Clear input to allow uploading again easily
+        uploadBtn.querySelector("span").textContent = "Upload PDF"
         document.getElementById("fileUpload").value = ""
+        // Reset dropzone text
+        const dropzone = document.getElementById("dropzone")
+        if (dropzone) {
+            dropzone.querySelector(".upload-text").textContent = "Drop PDF here or click to browse"
+            dropzone.querySelector(".upload-hint").textContent = "Max 10MB · PDF only"
+        }
     }
 }
 
-// Replaces standard "Thinking..." with CSS animated dots
+// ===== Typing Indicator =====
+
 function addTypingIndicator() {
     let box = document.getElementById("chatbox")
     let div = document.createElement("div")
@@ -54,16 +96,23 @@ function addTypingIndicator() {
     return div
 }
 
-async function send(){
+// ===== Chat =====
+
+function clearWelcome() {
+    const welcome = document.querySelector(".welcome-message")
+    if (welcome) welcome.remove()
+}
+
+async function send() {
     let input = document.getElementById("msg")
     let msg = input.value.trim()
 
-    if(!msg) return
+    if (!msg) return
 
+    clearWelcome()
     addMessage(msg, "user")
     input.value = ""
 
-    // Use animated typing dots instead of raw text
     let thinking = addTypingIndicator()
 
     try {
@@ -93,17 +142,24 @@ async function send(){
         console.log("API RESPONSE:", data)
 
         thinking.remove()
-        let aiDiv = addMessage(data.response, "ai")
+        addMessage(data.response, "ai")
 
-        if(data.fallback){
+        if (data.fallback) {
             let btn = document.createElement("button")
-            btn.innerText = "Ask General AI"
-            btn.style.marginTop = "10px"
-            
+            btn.className = "fallback-btn"
+            btn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="16" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                Ask General AI
+            `
+
             btn.onclick = async () => {
-                btn.style.display = "none" // Instantly hide button when clicked
+                btn.style.display = "none"
                 let fallbackThinking = addTypingIndicator()
-                
+
                 try {
                     let r = await fetch(API + "/general", {
                         method: "POST",
@@ -115,7 +171,7 @@ async function send(){
                     if (!r.ok) {
                         let err = await r.json()
                         addMessage("Error: " + (err.detail || "General AI failed"), "ai")
-                        btn.style.display = "block" // Re-show on failure
+                        btn.style.display = "inline-flex"
                         return
                     }
 
@@ -125,7 +181,7 @@ async function send(){
                 } catch (e) {
                     fallbackThinking.remove()
                     addMessage("Could not connect to server", "ai")
-                    btn.style.display = "block"
+                    btn.style.display = "inline-flex"
                     console.error("General AI error:", e)
                 }
             }
@@ -138,7 +194,7 @@ async function send(){
     }
 }
 
-function addMessage(text, type){
+function addMessage(text, type) {
     let box = document.getElementById("chatbox")
     let div = document.createElement("div")
     div.className = "message " + type
@@ -148,7 +204,9 @@ function addMessage(text, type){
     return div
 }
 
-async function loadDocs(){
+// ===== Document List =====
+
+async function loadDocs() {
     try {
         let res = await fetch(API + "/documents")
         if (!res.ok) {
@@ -157,18 +215,33 @@ async function loadDocs(){
         }
         let docs = await res.json()
         let div = document.getElementById("docs")
+        let emptyState = document.getElementById("emptyState")
         div.innerHTML = ""
 
-        for(let id in docs){
+        let keys = Object.keys(docs)
+
+        if (keys.length === 0) {
+            if (emptyState) emptyState.style.display = "flex"
+            return
+        }
+
+        if (emptyState) emptyState.style.display = "none"
+
+        for (let id of keys) {
             let d = docs[id]
             let el = document.createElement("div")
             el.className = "docItem"
             el.id = `doc-${id}`
-            
-            // Pass 'this' so we can immediately fade out the specific row
+
             el.innerHTML = `
-                <span>${d.name}</span>
-                <button onclick="delDoc('${id}', this.parentElement)">Delete</button>
+                <div class="doc-icon">PDF</div>
+                <span class="doc-name" title="${d.name}">${d.name}</span>
+                <button class="delete-btn" onclick="delDoc('${id}', this.closest('.docItem'))" title="Delete document">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
             `
             div.appendChild(el)
         }
@@ -177,13 +250,12 @@ async function loadDocs(){
     }
 }
 
-// Now includes 'element' to allow Optimistic UI instant removal
-async function delDoc(id, element){
-    // Optimistic UI: Immediately hide the list item to make UI feel instant
+// Optimistic UI delete
+async function delDoc(id, element) {
     if (element) {
-        element.style.opacity = '0.5';
-        element.style.pointerEvents = 'none';
-        element.querySelector('button').innerText = "..."
+        element.style.opacity = '0.4'
+        element.style.pointerEvents = 'none'
+        element.style.transform = 'translateX(-8px)'
     }
 
     try {
@@ -194,40 +266,57 @@ async function delDoc(id, element){
         if (!res.ok) {
             alert("Failed to delete document")
             if (element) {
-                element.style.opacity = '1';
-                element.style.pointerEvents = 'all';
-                element.querySelector('button').innerText = "Delete"
+                element.style.opacity = '1'
+                element.style.pointerEvents = 'all'
+                element.style.transform = 'translateX(0)'
             }
             return
         }
 
-        // Finish Optimistic UI by sliding out the element
-        if (element) {
-            element.style.display = 'none';
-        }
-        loadDocs() // Sync accurately in background
+        if (element) element.style.display = 'none'
+        loadDocs()
     } catch (e) {
         alert("Could not connect to server")
         if (element) {
-            element.style.opacity = '1';
-            element.style.pointerEvents = 'all';
-            element.querySelector('button').innerText = "Delete"
+            element.style.opacity = '1'
+            element.style.pointerEvents = 'all'
+            element.style.transform = 'translateX(0)'
         }
         console.error("Delete error:", e)
     }
 }
 
-// Allow pressing "Enter" on keyboard to send message
+// ===== Mobile Sidebar =====
+
+function toggleSidebar() {
+    const sidebar = document.getElementById("sidebar")
+    let overlay = document.querySelector(".sidebar-overlay")
+
+    if (!overlay) {
+        overlay = document.createElement("div")
+        overlay.className = "sidebar-overlay"
+        overlay.onclick = toggleSidebar
+        document.body.appendChild(overlay)
+    }
+
+    sidebar.classList.toggle("open")
+    overlay.classList.toggle("active")
+}
+
+// ===== Init =====
+
 document.addEventListener("DOMContentLoaded", () => {
-    let msgInput = document.getElementById("msg");
+    setupDropzone()
+
+    let msgInput = document.getElementById("msg")
     if (msgInput) {
         msgInput.addEventListener("keypress", function(event) {
             if (event.key === "Enter") {
-                event.preventDefault();
-                send();
+                event.preventDefault()
+                send()
             }
-        });
+        })
     }
-});
+})
 
 loadDocs()
