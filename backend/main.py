@@ -25,14 +25,7 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-def startup():
-    """Initialize the pgvector collection on server start."""
-    try:
-        load_index()
-        logger.info("pgvector collection initialized")
-    except Exception as e:
-        logger.warning(f"Failed to initialize pgvector on startup: {e}")
+# Removed startup hook to prevent deploy timeouts. Vector database initializes lazily.
 
 
 # ---------- Pydantic Models ----------
