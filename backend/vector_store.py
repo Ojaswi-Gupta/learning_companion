@@ -69,24 +69,34 @@ class VectorStore:
         Returns a list of dicts with keys: text, doc_id, file_name, page, score
         """
 
-        results = self._ensure_init().query(
-            data=vec,
-            limit=top_k,
-            include_metadata=True,
-            include_value=True
-        )
+        # Retry once on connection failure (NullPool creates fresh connections,
+        # but the remote server may still be momentarily unreachable)
+        last_error = None
+        for attempt in range(2):
+            try:
+                results = self._ensure_init().query(
+                    data=vec,
+                    limit=top_k,
+                    include_metadata=True,
+                    include_value=True
+                )
 
-        # vecs returns list of (id, distance, metadata) tuples
-        docs = []
-        for record_id, distance, metadata in results:
-            if metadata:
-                item = metadata.copy()
-                item["score"] = float(distance)
-                docs.append(item)
+                docs = []
+                for record_id, distance, metadata in results:
+                    if metadata:
+                        item = metadata.copy()
+                        item["score"] = float(distance)
+                        docs.append(item)
 
-        # Force aggressive closure of the TCP connection back to the OS to never trigger ghost queues
-        vecs_client.engine.dispose()
-        return docs
+                return docs
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Vector search attempt {attempt+1} failed: {e}")
+                # Reset collection so _ensure_init reconnects
+                self.collection = None
+
+        logger.error(f"Vector search failed after retries: {last_error}")
+        return []  # Return empty results instead of crashing
 
     def delete_doc(self, doc_id):
         """Remove all chunks for a given doc_id using vecs filters."""
