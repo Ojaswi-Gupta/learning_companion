@@ -1,15 +1,24 @@
-from fastembed import TextEmbedding
+import os
+from huggingface_hub import InferenceClient
 from config import EMBED_MODEL
 
+HF_TOKEN = os.getenv("HF_TOKEN")
+if not HF_TOKEN:
+    print("Warning: HF_TOKEN is not set. Inference might fail.")
+
+client = InferenceClient(token=HF_TOKEN)
+
 model_name = "sentence-transformers/" + EMBED_MODEL if "sentence-transformers/" not in EMBED_MODEL else EMBED_MODEL
-model = TextEmbedding(model_name=model_name, threads=1)
 
 def embed_texts(texts):
-    # TextEmbedding returns an iterable of numpy arrays
-    embeddings = list(model.embed(texts))
-    return [e.tolist() for e in embeddings]
-
+    # The Hugging Face API handles lists of text and returns embeddings directly
+    embeddings = client.feature_extraction(text=texts, model=model_name)
+    
+    # Convert numpy arrays to standard python lists if necessary
+    if hasattr(embeddings, 'tolist'):
+        return embeddings.tolist()
+    return list(embeddings)
 
 def embed_query(text):
-    embeddings = list(model.embed([text]))
-    return embeddings[0].tolist()
+    # Query expects exactly one float array back
+    return embed_texts([text])[0]
