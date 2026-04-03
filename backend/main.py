@@ -55,7 +55,7 @@ def get_session_id(request: Request, response: Response) -> str:
 # ---------- Endpoints ----------
 
 @app.post("/upload")
-async def upload(file: UploadFile):
+def upload(file: UploadFile):
     try:
         # Validate file extension
         ext = os.path.splitext(file.filename or "")[1].lower()
@@ -66,7 +66,7 @@ async def upload(file: UploadFile):
             )
 
         # Read file into memory
-        contents = await file.read()
+        contents = file.file.read()
         size_mb = len(contents) / (1024 * 1024)
 
         if size_mb > MAX_UPLOAD_MB:
