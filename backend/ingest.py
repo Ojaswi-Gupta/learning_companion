@@ -6,7 +6,6 @@ import tempfile
 from embeddings import embed_texts
 from vector_store import add_documents
 from documents_store import save_document
-from rag_pipeline import extract_topics
 from chunking import chunk_text
 from supabase_client import supabase
 
@@ -81,8 +80,7 @@ def ingest_pdf_bytes(file_bytes, original_name):
     vectors = embed_texts([t["text"] for t in texts])
     add_documents(texts, vectors)
 
-    # Extract topics and save document metadata
-    topics = extract_topics(full_text)
-    save_document(doc_id, file_name, topics)
+    # Save document metadata with placeholder topics (extracted lazily on demand)
+    save_document(doc_id, file_name, "Topics will be generated on first request.")
 
     return doc_id
