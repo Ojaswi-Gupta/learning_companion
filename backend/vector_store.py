@@ -19,12 +19,18 @@ class VectorStore:
     def __init__(self):
         self.collection = None
 
+    def _ensure_init(self):
+        """Lazy load the collection if startup failed to connect."""
+        if self.collection is None:
+            self.collection = vecs_client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                dimension=EMBED_DIM
+            )
+        return self.collection
+
     def init(self):
-        """Get or create the pgvector collection."""
-        self.collection = vecs_client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            dimension=EMBED_DIM
-        )
+        """Get or create the pgvector collection forcefully."""
+        self._ensure_init()
 
     def add_documents(self, texts, vectors):
         """Add document chunks and their vectors to the collection.
@@ -49,11 +55,11 @@ class VectorStore:
                 }
             ))
 
-        self.collection.upsert(records=records)
+        self._ensure_init().upsert(records=records)
 
         # Create or refresh the index for fast search
         try:
-            self.collection.create_index(replace=True)
+            self._ensure_init().create_index(replace=True)
         except Exception as e:
             logger.warning(f"Index creation note: {e}")
 
@@ -63,7 +69,7 @@ class VectorStore:
         Returns a list of dicts with keys: text, doc_id, file_name, page, score
         """
 
-        results = self.collection.query(
+        results = self._ensure_init().query(
             data=vec,
             limit=top_k,
             include_metadata=True,
@@ -83,7 +89,7 @@ class VectorStore:
     def delete_doc(self, doc_id):
         """Remove all chunks for a given doc_id using vecs filters."""
         try:
-            self.collection.delete(filters={"doc_id": {"$eq": doc_id}})
+            self._ensure_init().delete(filters={"doc_id": {"$eq": doc_id}})
             logger.info(f"Deleted chunks for doc_id={doc_id}")
         except Exception as e:
             logger.error(f"Error deleting doc {doc_id}: {e}", exc_info=True)

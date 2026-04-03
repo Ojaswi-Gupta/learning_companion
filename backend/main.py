@@ -28,8 +28,11 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     """Initialize the pgvector collection on server start."""
-    load_index()
-    logger.info("pgvector collection initialized")
+    try:
+        load_index()
+        logger.info("pgvector collection initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize pgvector on startup: {e}")
 
 
 # ---------- Pydantic Models ----------
