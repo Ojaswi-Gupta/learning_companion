@@ -81,18 +81,10 @@ class VectorStore:
         return docs
 
     def delete_doc(self, doc_id):
-        """Remove all chunks for a given doc_id using direct SQL."""
-
+        """Remove all chunks for a given doc_id using vecs filters."""
         try:
-            from sqlalchemy import text
-            with vecs_client.Session() as sess:
-                result = sess.execute(
-                    text(f"DELETE FROM vecs.\"{COLLECTION_NAME}\" WHERE metadata->>'doc_id' = :doc_id"),
-                    {"doc_id": doc_id}
-                )
-                sess.commit()
-                logger.info(f"Deleted {result.rowcount} chunks for doc_id={doc_id}")
-
+            self.collection.delete(filters={"doc_id": {"$eq": doc_id}})
+            logger.info(f"Deleted chunks for doc_id={doc_id}")
         except Exception as e:
             logger.error(f"Error deleting doc {doc_id}: {e}", exc_info=True)
             raise
