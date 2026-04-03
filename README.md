@@ -2,6 +2,8 @@
 
 An AI-powered document assistant that allows users to upload PDFs and ask questions about them using Retrieval-Augmented Generation (RAG).
 
+https://learning-companion-seven.vercel.app
+
 ## Features
 
 - PDF document upload
