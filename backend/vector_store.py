@@ -84,6 +84,8 @@ class VectorStore:
                 item["score"] = float(distance)
                 docs.append(item)
 
+        # Force aggressive closure of the TCP connection back to the OS to never trigger ghost queues
+        vecs_client.engine.dispose()
         return docs
 
     def delete_doc(self, doc_id):
